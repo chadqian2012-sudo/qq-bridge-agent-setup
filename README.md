@@ -7,7 +7,7 @@ The bridge depends on the separately distributed `@snowluma/sdk` and `@snowluma/
 ## Before installation
 
 - Install Node.js 22.13 or later, npm and Git. Ensure `node.exe` and `npm.cmd` are on PATH.
-- Install and configure QQ, SnowLuma and DSH yourself. Create a DSH profile and identify the installed DSH `lib/bin.js` and DSH home directory. Configure local OneBot HTTP on port 3000 and WebSocket on port 3001, with the same nonempty access token. Configure SnowLuma's QQ account and injection according to its own documentation and license.
+- Install and configure QQ, SnowLuma and DSH yourself. Create a DSH profile and identify the installed DSH `lib/bin.js` and DSH home directory. Configure local OneBot HTTP on port 3000 and WebSocket on port 3001, each with a nonempty access token; the two tokens may differ. Configure SnowLuma's QQ account and injection according to its own documentation and license.
 - Use your own bot QQ, optional owner QQ and allowed groups. This repository contains no personal account or group whitelist. With no groups given, group access remains disabled until configured.
 
 From PowerShell in this repository (replace every placeholder locally):
@@ -30,4 +30,4 @@ The included `-NoTasks -SkipDshInstall` options allow an isolated fixture instal
 
 ## Current verification
 
-This initial release has been exercised in isolated directories on Windows with fixture OneBot configuration and a separate DSH home: npm installation, real DSH plugin installation and configuration expansion, the three MCP stdio handshakes, a paused bridge on isolated ports, scheduled-task registration with temporary names, and schedule boundary checks. It has not yet been verified on a clean Windows machine with a separately installed, logged-in SnowLuma/QQ account and live model traffic. Check the full chain in your own environment before relying on unattended operation.
+This initial release has been exercised in isolated directories on Windows with a separate DSH home: npm installation, real DSH plugin installation and configuration expansion, the three MCP stdio handshakes, and a paused bridge connected to a real DSH instance on isolated ports. The bridge was checked against both a simulated OneBot server and the existing logged-in SnowLuma gateway, with empty allowlists and no QQ messages sent. Scheduled-task registration was checked with temporary names and schedule boundaries were evaluated with simulated times. It has not yet been verified on a clean Windows machine with a separately installed, logged-in SnowLuma/QQ account and live model traffic. Check the full chain in your own environment before relying on unattended operation.

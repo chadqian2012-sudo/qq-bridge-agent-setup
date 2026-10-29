@@ -194,7 +194,7 @@ export function persistToken(cfgPath, newToken) {
  * 只写传进来的字段，其它配置一律不动；全部一致时不写文件（幂等）。
  * 返回 { updated, changed: {...} }。
  */
-export function persistSnowLumaEndpoint(cfgPath, { accessToken, wsUrl, httpUrl } = {}) {
+export function persistSnowLumaEndpoint(cfgPath, { accessToken, wsAccessToken, wsUrl, httpUrl } = {}) {
   let text = fs.readFileSync(cfgPath, 'utf8');
   // 读的时候必须吃掉 BOM，否则 JSON.parse 会抛「Unexpected token」。
   const hadBom = text.charCodeAt(0) === 0xFEFF;
@@ -210,6 +210,7 @@ export function persistSnowLumaEndpoint(cfgPath, { accessToken, wsUrl, httpUrl }
     next[key] = value;
   };
   consider('accessToken', accessToken);
+  consider('wsAccessToken', wsAccessToken);
   consider('wsUrl', wsUrl);
   consider('httpUrl', httpUrl);
   if (Object.keys(changed).length === 0) return { updated: false, changed: {} };

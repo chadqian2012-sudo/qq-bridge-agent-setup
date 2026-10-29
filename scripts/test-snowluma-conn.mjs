@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  discoverSnowLumaConnection, persistToken, readOneBotHttpTokens, readOneBotTokens, snowLumaHomeCandidates
+  discoverSnowLumaConnection, persistToken, persistSnowLumaEndpoint, readOneBotHttpTokens, readOneBotTokens, snowLumaHomeCandidates
 } from '../src/snowluma-conn.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -94,6 +94,10 @@ console.log('## token 写回 config.json');
   ok(after.allow.groups[0] === 1, '其它配置字段未被破坏');
   const r2 = persistToken(cfgPath, 'new-token');
   ok(r2.updated === false, 'token 未变时不重复写（幂等）');
+  const r3 = persistSnowLumaEndpoint(cfgPath, { accessToken: 'http-test-token', wsAccessToken: 'ws-test-token' });
+  const updated = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  ok(r3.updated && updated.snowluma.accessToken === 'http-test-token' && updated.snowluma.wsAccessToken === 'ws-test-token', 'HTTP 与 WebSocket token 分别保存');
+  ok(!persistSnowLumaEndpoint(cfgPath, { accessToken: 'http-test-token', wsAccessToken: 'ws-test-token' }).updated, '两个 token 都不变时不重复写');
   fs.rmSync(dir, { recursive: true, force: true });
 }
 

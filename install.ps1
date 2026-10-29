@@ -29,8 +29,8 @@ if (-not (Test-Path -LiteralPath $onebotFile)) { throw 'The selected bot OneBot 
 $onebot = Get-Content -LiteralPath $onebotFile -Raw -Encoding UTF8 | ConvertFrom-Json
 $http = @($onebot.networks.httpServers) | Where-Object { $_.port -eq 3000 } | Select-Object -First 1
 $ws = @($onebot.networks.wsServers) | Where-Object { $_.port -eq 3001 } | Select-Object -First 1
-if (-not $http -or -not $ws -or -not $http.accessToken -or $http.accessToken -ne $ws.accessToken) {
-  throw 'Configure local OneBot HTTP 3000 and WebSocket 3001 with the same nonempty token first.'
+if (-not $http -or -not $ws -or -not $http.accessToken -or -not $ws.accessToken) {
+  throw 'Configure local OneBot HTTP 3000 and WebSocket 3001 with nonempty tokens first.'
 }
 $configPath = Join-Path $root 'config.json'
 $runtimePath = Join-Path $root 'state\install.json'
@@ -46,6 +46,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $root 'state') | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
 $config = Get-Content -LiteralPath (Join-Path $root 'config.example.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $config.snowluma.accessToken = $http.accessToken
+$config.snowluma | Add-Member -MemberType NoteProperty -Name wsAccessToken -Value $ws.accessToken -Force
 $config.snowluma.homeDir = $SnowLumaDir
 $config.ownerQQ = if ($OwnerQQ) { $OwnerQQ } else { $null }
 $config.allow.groups = @($GroupIds | ForEach-Object { [long]$_ })

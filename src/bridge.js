@@ -13118,7 +13118,7 @@ async function main() {
   // QQ 侧（SnowLuma OneBot WebSocket 客户端）
   const bot = new SnowLumaWebSocketClient({
     url: cfg.snowluma.wsUrl,
-    accessToken: cfg.snowluma.accessToken || undefined,
+    accessToken: cfg.snowluma.wsAccessToken || cfg.snowluma.accessToken || undefined,
     reconnect: true
   });
 
@@ -13185,9 +13185,10 @@ async function main() {
     // ⚠️ 必须在**改 cfg 之前**算出要写什么，但写文件时对照的是**文件里**的旧值 ——
     //    这里显式传 wsUrl，且不依赖 cfg 的内存值来判断"是否需要写"。
     cfg.snowluma.wsUrl = wsUrl;
+    cfg.snowluma.wsAccessToken = wsToken;
     try {
       const w = persistSnowLumaEndpoint(path.join(ROOT, 'config.json'), {
-        accessToken: httpToken, wsUrl, httpUrl: r.baseUrl
+        accessToken: httpToken, wsAccessToken: wsToken, wsUrl, httpUrl: r.baseUrl
       });
       if (w.updated) log(`   已写回 config.json：${Object.keys(w.changed).join(' / ')}`);
       else log('   config.json 端点已是最新，无需改写');
