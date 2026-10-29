@@ -1,0 +1,10 @@
+node_modules/
+state/
+config.json
+*.log
+*.bak
+*.bak-*
+scripts/privacy-rules.json
+audio/
+audio-neural/
+DO-NOT-PUBLISH.md

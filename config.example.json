@@ -1,0 +1,302 @@
+{
+  "dsh": {
+    "baseUrl": "http://127.0.0.1:3080",
+    "provider": "deepseek-official",
+    "model": "deepseek-flash",
+    "reasoningEffort": "off",
+    "authToken": "",
+    "authHeader": "authorization",
+    "authPrefix": "Bearer",
+    "allowRemote": false
+  },
+  "role": {
+    "maxInjectChars": 6000
+  },
+  "snowluma": {
+    "wsUrl": "ws://127.0.0.1:3001",
+    "httpUrl": "http://127.0.0.1:3000",
+    "accessToken": "",
+    "launcherPath": "",
+    "homeDir": ""
+  },
+  "ownerQQ": null,
+  "sessionCwd": "",
+  "agentPreset": "qq-chat",
+  "workspaceTitle": "QQ 聊天",
+  "allow": {
+    "private": [],
+    "groups": []
+  },
+  "deny": {
+    "private": [],
+    "groups": []
+  },
+  "allowAllWhenEmpty": false,
+  "ackMessage": "",
+  "sendDelayMs": 300,
+  "questionTimeoutMs": 300000,
+  "consolePort": 3100,
+  "consoleToken": "",
+  "groupStats": {
+    "enabled": true,
+    "groupId": 0,
+    "reportAt": "00:00",
+    "coverDay": "auto",
+    "leaderboardSize": 10,
+    "maxChars": 900,
+    "catchUpHours": 6,
+    "maxAttempts": 3,
+    "checkIntervalMs": 30000,
+    "dbPath": "",
+    "excludeSelf": true,
+    "muteKingEnabled": true,
+    "muteKingSize": 5
+  },
+  "groupAdmin": {
+    "enabled": true,
+    "authorityRoles": [
+      "owner"
+    ],
+    "authorityUserIds": [],
+    "defaultDurationMs": 3600000,
+    "maxDurationMs": 2592000000,
+    "dryRun": false
+  },
+  "violationReport": {
+    "enabled": true,
+    "groups": [],
+    "linkRequired": true,
+    "notifyUserIds": [],
+    "exemptUserIds": [],
+    "patterns": null
+  },
+  "pricing": {
+    "models": {
+      "my-relay-model": {
+        "label": "我的中转模型",
+        "off": {
+          "cacheHit": 0.5,
+          "cacheMiss": 3,
+          "output": 9
+        }
+      }
+    }
+  },
+  "security": {
+    "interceptNotify": true
+  },
+  "slang": {
+    "enabled": true,
+    "extractMinMessages": 40,
+    "extractCooldownMs": 1800000,
+    "inferenceThresholds": [
+      2,
+      4,
+      8
+    ],
+    "injectMax": 8,
+    "learnerPreset": "qq-chat",
+    "workspaceTitle": "QQ 黑话学习",
+    "autoResearch": true
+  },
+  "social": {
+    "enabled": true,
+    "maxReplyChars": 500,
+    "mustReplyKeywords": [
+      "deepseek",
+      "小鲸鱼",
+      "大肥鱼",
+      "鲸鱼",
+      "d指导",
+      "在吗"
+    ],
+    "contextWindow": 20,
+    "triggerProbability": 0.1,
+    "activeCheckMinMs": 8000,
+    "activeCheckMaxMs": 30000,
+    "idleWindowMs": 360000,
+    "idleRetryProbability": 0.4,
+    "proactiveEnabled": true,
+    "proactiveIdleThresholdMs": 1800000,
+    "proactiveCheckMinMs": 2700000,
+    "proactiveCheckMaxMs": 5400000,
+    "proactiveProbability": 0.2,
+    "activeReplyDelayMinMs": 1000,
+    "activeReplyDelayMaxMs": 5000,
+    "activeDurationEnabled": true,
+    "activeDurationMinMs": 1200000,
+    "activeDurationMaxMs": 3000000,
+    "skipProbability": 0.05,
+    "surrenderProbability": 0,
+    "idleRetryWaitMs": 120000,
+    "burstEnabled": true,
+    "burstIntervalMinMs": 1000,
+    "burstIntervalMaxMs": 3000,
+    "longGapProbability": 0.2,
+    "longGapMinMs": 5000,
+    "longGapMaxMs": 10000
+  },
+  "socialV2": {
+    "enabled": true,
+    "autoReplyCheckMs": 30000,
+    "agentPreset": "qq-chat-v2",
+    "provideRecommendations": true,
+    "tools": {
+      "getPrompt": true,
+      "getUnread": true,
+      "getRecent": true,
+      "socialState": true,
+      "sendGroup": true,
+      "sendPrivate": true,
+      "reply": true,
+      "sendBurst": true,
+      "sendMessage": true,
+      "waitMessages": true,
+      "feedback": true,
+      "getMyRecent": true,
+      "getMessageDetail": true,
+      "getActiveMembers": true,
+      "setWakeConfig": true,
+      "markRead": true,
+      "memory": true,
+      "slangQuery": true,
+      "slangSubmit": true,
+      "getImages": true,
+      "getForwardMsg": true,
+      "sendPoke": true,
+      "listStickers": true,
+      "getStickerImage": true,
+      "sendSticker": true,
+      "setStickerRemark": false,
+      "stickerNote": true,
+      "collectSticker": true,
+      "getSelfImage": true,
+      "sendVoice": true
+    },
+    "wake": {
+      "defaultMode": "diving",
+      "preSleepWaitEnabled": true,
+      "preSleepWaitMs": 60000,
+      "recommendedDefaultInfinite": true,
+      "sleepMinMs": 0,
+      "sleepMaxMs": 0,
+      "recommendedSleepMinMs": 3600000,
+      "recommendedSleepMaxMs": 10800000,
+      "recommendedProbability": 0.01,
+      "recommendedKeywords": [
+        "小鲸鱼",
+        "DeepSeek",
+        "deepseek",
+        "DS",
+        "D老师",
+        "d老师",
+        "D指导",
+        "d指导",
+        "D师傅",
+        "d师傅",
+        "深度求索",
+        "大肥鱼",
+        "鲸鱼",
+        "DeepSeek V3",
+        "DeepSeek R1",
+        "R1"
+      ],
+      "recommendedAtMention": true,
+      "recommendedNameMention": true,
+      "recommendedQuestion": true,
+      "recommendedPoke": true,
+      "recommendedHint": "【全局统一参数】所有允许服务的群默认统一使用自适应潜水：defaultMode=diving、普通消息推荐唤醒概率=0.01、recommendedDefaultInfinite=true。普通消息只有 1% 概率触发；@、叫名字、提问、拍一拍等定向触发仍按配置工作。不要把模式改成活跃，不要擅自改全局概率或触发条件。群友只是向群里表达难过、烦躁、压力或沮丧且没有直接找你时，保持安静，不插嘴、不发安慰或表情；被直接点名或求助时，温和简短回应。被反驳或挑衅时不怼人、不讥讽、不争输赢；先核对事实，错了就承认，有分歧只平和说明。",
+      "batchWindowMs": 800,
+      "maxWakePerMinute": 1,
+      "maxWakePerHour": 0,
+      "noActionLimit": 3,
+      "maxWakeConfigReminders": 2,
+      "maxDirectedWakePerMinute": 3,
+      "pauseBacklogDropMinMs": 1800000,
+      "stuckBusyMs": 300000,
+      "busyForceClearMs": 300000
+    },
+    "send": {
+      "burstEnabled": true,
+      "burstMaxMessages": 8,
+      "burstIntervalMinMs": 1000,
+      "burstIntervalMaxMs": 3000,
+      "longGapProbability": 0.2,
+      "longGapMinMs": 5000,
+      "longGapMaxMs": 10000,
+      "maxSendPerMinute": 8,
+      "maxSendPerHour": 60,
+      "maxMessageChars": 500,
+      "maxGapMs": 10000,
+      "gapBaseMs": 800,
+      "gapPerCharMs": 20,
+      "recommendedHint": "单条消息不要用空格断句，中文短句用逗号/顿号或直接连写；分条时每条都要读起来完整，不要把同一句话拆到两条里；普通闲聊建议一次 1~3 条，条间 1~3 秒；讲故事/回忆可以 5~10 秒间隔；不要连续刷屏。"
+    },
+    "wait": {
+      "defaultMs": 30000,
+      "minMs": 5000,
+      "maxMs": 600000,
+      "defaultQuietMs": 1500,
+      "minQuietAfterNewMs": 2000
+    },
+    "sticker": {
+      "enabled": true,
+      "syncTtlMs": 60000,
+      "maxListCount": 100,
+      "includeInPrompt": true,
+      "promptMaxStickers": 8,
+      "collect": {
+        "enabled": true,
+        "maxPerMinute": 2,
+        "maxPerHour": 10,
+        "maxRemarkChars": 20
+      }
+    },
+    "voice": {
+      "enabled": true,
+      "dir": "audio",
+      "maxSeconds": 300,
+      "maxBytes": 20971520,
+      "maxPerMinute": 1,
+      "maxPerHour": 3,
+      "allowAbsolutePath": false,
+      "defaultVolume": 1,
+      "loudness": "normal",
+      "ffmpegPath": "",
+      "autoReadback": true,
+      "transcribe": true
+    },
+    "proactive": {
+      "enabled": true,
+      "checkIntervalMinMs": 7200000,
+      "checkIntervalMaxMs": 14400000,
+      "idleThresholdMs": 3600000,
+      "probability": 0.2
+    },
+    "feedback": {
+      "maxLength": 500,
+      "notifyOwnerOnError": false
+    },
+    "context": {
+      "recentLimit": 100,
+      "unreadLimit": 30,
+      "contextWindow": 20,
+      "inlineWakeMessages": true,
+      "wakeMessageLimit": 30,
+      "wakeRecentLimit": 8,
+      "wakeMaxChars": 8000,
+      "sessionMaxContextTokens": 150000
+    },
+    "media": {
+      "maxBytes": 67108864
+    }
+  },
+  "typing": {
+    "enabled": true,
+    "baseMs": -200,
+    "msPerChar": 140,
+    "minMs": 300,
+    "maxMs": 7500,
+    "jitterRatio": 0.1
+  }
+}
