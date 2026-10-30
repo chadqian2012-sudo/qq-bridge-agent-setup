@@ -83,13 +83,20 @@ check('守卫：拒绝 0.1.7 已删除的 cordis 旧工具名（避免静默失�
 
 const patch = fs.readFileSync(path.join(DSH_HOME, 'profiles/web/cordis.patch.yml'), 'utf8');
 const patchDoc = yaml.load(patch);
-const mcpIds = patchDoc.filter((e) => e?.insert).flatMap((e) => e.insert.map((x) => x.id));
+const mcpEntries = patchDoc.filter((e) => e?.insert).flatMap((e) => e.insert)
+  .filter((entry) => ['mcp-snowluma', 'mcp-snowluma-host', 'mcp-web-search-safe'].includes(entry?.id));
+const mcpIds = mcpEntries.map((entry) => entry.id);
 check('profile patch 含 3 个 MCP 且无重复', mcpIds.length === 3 && new Set(mcpIds).size === 3, mcpIds.join(', '));
 const snowlumaEntry = patchDoc.filter((e) => e?.insert).flatMap((e) => e.insert).find((x) => x.id === 'mcp-snowluma');
 check('mcp-snowluma 带 toolCallTimeoutMs=725000', snowlumaEntry?.config?.toolCallTimeoutMs === 725000);
-check('mcp 路径指向本仓库', mcpIds.every((id) => {
-  const e = patchDoc.filter((x) => x?.insert).flatMap((x) => x.insert).find((y) => y.id === id);
-  return String(e.config.args[0]).includes('qq-bridge');
+const mcpScriptById = {
+  'mcp-snowluma': 'mcp-snowluma-safe.js',
+  'mcp-snowluma-host': 'mcp-host-server.js',
+  'mcp-web-search-safe': 'mcp-web-search-safe.js',
+};
+check('mcp 路径指向本仓库', mcpIds.length === 3 && mcpEntries.every((entry) => {
+  const expected = path.join(ROOT, 'src', mcpScriptById[entry.id]);
+  return Array.isArray(entry.config?.args) && path.resolve(String(entry.config.args[0] ?? '')) === expected;
 }));
 
 const pkg = JSON.parse(fs.readFileSync(path.join(DSH_HOME, 'profiles/web/package.json'), 'utf8'));
