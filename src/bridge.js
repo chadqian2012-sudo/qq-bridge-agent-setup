@@ -13215,6 +13215,7 @@ async function main() {
       log(`🔄 SnowLuma HTTP token 已更新（来源 ${r.source}）：${String(cfg.snowluma.accessToken).slice(0, 4)}… → ${String(httpToken).slice(0, 4)}…`);
       cfg.snowluma.accessToken = httpToken;
     }
+    if (r.baseUrl) cfg.snowluma.httpUrl = r.baseUrl;
     // 把确认可用的端点写回 config.json：下次启动直接就对了，不用再自愈一遍。
     // ⚠️ 必须在**改 cfg 之前**算出要写什么，但写文件时对照的是**文件里**的旧值 ——
     //    这里显式传 wsUrl，且不依赖 cfg 的内存值来判断"是否需要写"。
