@@ -42,8 +42,11 @@ if ($Resume -and (Test-Path -LiteralPath $runtimePath)) {
   }
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $root 'state') | Out-Null
-& $npm ci --no-audit --no-fund
-if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
+Push-Location -LiteralPath $root
+try {
+  & $npm ci --no-audit --no-fund
+  if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
+} finally { Pop-Location }
 $config = Get-Content -LiteralPath (Join-Path $root 'config.example.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $config.snowluma.accessToken = $http.accessToken
 $config.snowluma | Add-Member -MemberType NoteProperty -Name wsAccessToken -Value $ws.accessToken -Force
