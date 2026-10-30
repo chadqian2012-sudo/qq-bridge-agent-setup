@@ -118,6 +118,7 @@ export async function discoverSnowLumaConnection({
   const base = String(baseUrl || process.env.SNOWLUMA_HTTP_URL || sl.httpUrl || 'http://127.0.0.1:3000').replace(/\/+$/, '');
   const homes = homeDirs ?? snowLumaHomeCandidates({ cfg });
   const explicit = token || process.env.SNOWLUMA_TOKEN || sl.accessToken || '';
+  const expectedSelfId = String(sl.expectedSelfId ?? '').trim();
 
   // 候选顺序：显式配置优先（尊重用户选择），然后才是 per-account 文件里的其它账号
   const candidates = [];
@@ -134,6 +135,7 @@ export async function discoverSnowLumaConnection({
   const wsInfo = new Map();   // uin -> { token, url }
   for (const home of homes) {
     for (const entry of readOneBotTokens(home)) {
+      if (expectedSelfId && String(entry.uin) !== expectedSelfId) continue;
       if (entry.http) add(entry.http.token, `onebot_${entry.uin}.json`, `http://${entry.http.host}:${entry.http.port}`);
       if (entry.ws?.token) wsInfo.set(entry.uin, { token: entry.ws.token, url: `ws://${entry.ws.host}:${entry.ws.port}` });
     }
@@ -144,6 +146,11 @@ export async function discoverSnowLumaConnection({
   for (const c of candidates) {
     const r = await probe(c.url, c.token, timeoutMs);
     tried.push({ source: c.source, url: c.url, token: c.token ? c.token.slice(0, 4) + '…' : '(空)', ok: r.ok, status: r.status, wording: r.wording });
+    if (r.ok && expectedSelfId && String(r.data?.user_id ?? '') !== expectedSelfId) {
+      tried[tried.length - 1].ok = false;
+      tried[tried.length - 1].wording = 'connected account differs from configured bot account';
+      continue;
+    }
     if (r.ok) {
       // 找到有效 HTTP token 后，把**同一个账号**的 WS 信息也带回去：
       // 桥接走 WebSocket，用另一个 token、另一个端口 —— 只修 HTTP 的话桥接仍然 1006 重连。

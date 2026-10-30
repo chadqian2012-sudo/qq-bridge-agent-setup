@@ -1887,6 +1887,7 @@ async function main() {
     const sendPromise = new Promise((resolve, reject) => { resolveSend = resolve; rejectSend = reject; });
     sendChain = sendChain.then(async () => {
       try {
+        if (!expectedBotVerified()) throw new Error('机器人账号尚未验证或与配置不符');
         if (assertSendAllowed) assertSendAllowed();
         // 语音条比图片大、要过一次 SILK 转码，给 60s 预算（文本/图片共用同一 sendChain，
         // 所以这条语音发完之前后面的文本会自然排队，不会插队到语音前面）。
@@ -2779,6 +2780,11 @@ async function main() {
   // 2026-10-03 就是这个状态：进程在、端口 3100 在听，对着一个不存在的 SnowLuma 无限重连。
   let snowlumaConnected = false;
   let snowlumaSelfId = null; // 网关侧登录的机器人 QQ（on open 时刷新）
+  let snowlumaConnectionEpoch = 0;
+  const expectedBotVerified = () => {
+    const expected = String(cfg.snowluma?.expectedSelfId ?? '').trim();
+    return !expected || (snowlumaConnected && snowlumaSelfId === expected);
+  };
   let currentMode = 'chat'; // chat | closed-agent | reserved（仿真模式，由 DSH settings / state/mode.json 驱动）
   let lastMode = currentMode;
   // closed-agent 模式使用的 DSH agent preset：留空表示「用 DSH 自己声明的默认 preset」。
@@ -4285,6 +4291,7 @@ async function main() {
         }
         // ── 测试发送消息（强制走白名单校验） ───────────────────────────────────
         if (req.method === 'POST' && url.pathname === '/api/test-send') {
+          if (!expectedBotVerified()) { sendJson({ ok: false, error: '机器人账号尚未验证或与配置不符' }, 403); return; }
           const body = await readBody();
           const kind = body.kind === 'private' ? 'private' : 'group';
           const id = Number(body.id);
@@ -5496,6 +5503,7 @@ async function main() {
           if (!agentTokenOk(key, req.headers['x-agent-token'])) { sendJson({ ok: false, error: 'agent token 无效' }, 403); return; }
           if (!v2SessionAllowed(key)) { sendJson({ ok: false, error: '目标不在当前模式允许范围内' }, 403); return; }
           if (!v2ToolEnabled('sendPoke')) { sendJson({ ok: false, error: '工具未启用：qq_send_poke' }, 403); return; }
+          if (!expectedBotVerified()) { sendJson({ ok: false, error: '机器人账号尚未验证或与配置不符' }, 403); return; }
           if (socialV2.paused) { sendJson({ ok: false, error: '二代 AI 已暂停，不能发送拍一拍' }, 403); return; }
           const keyMatch = /^(group|private):(\d+)$/.exec(key);
           if (!keyMatch) { sendJson({ ok: false, error: 'key 格式应为 group:群号 或 private:QQ号' }, 400); return; }
@@ -7642,6 +7650,7 @@ async function main() {
 
 
   async function onebotSend(kind, id, message, replyToMessageId, atUserId = null) {
+    if (!expectedBotVerified()) throw new Error('机器人账号尚未验证或与配置不符');
     const segments = [];
     if (replyToMessageId !== undefined && replyToMessageId !== null && String(replyToMessageId).trim() !== '') {
       const rid = String(replyToMessageId).trim();
@@ -8729,6 +8738,7 @@ async function main() {
     const policy = sessionPolicy(key);
     const sessionId = state.sessions[key];
     return () => {
+      if (!expectedBotVerified()) throw new Error('发送已取消：机器人账号尚未验证或与配置不符');
       if (!isSessionAllowedInCurrentMode(key) || policy !== sessionPolicy(key)
           || (sessionId && state.sessions[key] !== sessionId)) {
         throw new Error('发送已取消：会话、模式或白名单已变化');
@@ -11902,6 +11912,7 @@ async function main() {
       detail = 'dry-run（未调用 set_group_ban）';
     } else {
       try {
+        if (!expectedBotVerified()) throw new Error('机器人账号尚未验证或与配置不符');
         await bot.raw('set_group_ban', {
           group_id: Number(groupId),
           user_id: Number(target.targetId),
@@ -13123,34 +13134,57 @@ async function main() {
   });
 
   bot.onPrivateMessage(async (event) => {
+    if (!expectedBotVerified()) return;
     if (event.user_id === event.self_id) return;
     try { await handleIncoming('private', event.user_id, event, cfg); } catch (error) { log('处理私聊消息出错:', error?.message ?? error); }
   });
   bot.onGroupMessage(async (event) => {
+    if (!expectedBotVerified()) return;
     if (event.sender?.user_id === event.self_id || event.user_id === event.self_id) return;
     try { await handleIncoming('group', event.group_id, event, cfg); } catch (error) { log('处理群消息出错:', error?.message ?? error); }
   });
   bot.onNotice('notify', async (event) => {
+    if (!expectedBotVerified()) return;
     try { await handlePokeNotice(event); } catch (error) { log('处理拍一拍事件出错:', error?.message ?? error); }
   });
 
   bot.on('open', () => {
     // 用实际连接地址（自愈后可能与 config 里的初值不同，别打印过期的那个）
     const connectedUrl = bot.url ?? cfg.snowluma.wsUrl;
-    snowlumaConnected = true;
+    const epoch = ++snowlumaConnectionEpoch;
+    snowlumaConnected = !cfg.snowluma?.expectedSelfId;
+    snowlumaSelfId = null;
     log(`SnowLuma 已连接：${connectedUrl}`);
     // 读取机器人昵称（用于社交模式"被提到"识别）；重连后也会刷新
-    bot.getLoginInfo().then((login) => {
+    bot.getLoginInfo().then(async (login) => {
+      if (epoch !== snowlumaConnectionEpoch) return;
       // 记下网关侧登录的机器人 QQ：watchdog 用它判断「连上的是不是该连的那个号」。
       if (login?.user_id) snowlumaSelfId = String(login.user_id);
+      if (cfg.snowluma?.expectedSelfId && snowlumaSelfId !== String(cfg.snowluma.expectedSelfId)) {
+        snowlumaConnected = false;
+        log('SnowLuma 登录账号与配置的机器人账号不符，已阻止接收和发送。');
+        return;
+      }
+      if (cfg.snowluma?.expectedSelfId) {
+        // HTTP REST 发送接口与 WebSocket 登录是两条独立凭据链；必须也确认
+        // 当前 HTTP token/端点登录到同一 QQ，再开放消息处理和发送。
+        const http = await discoverSnowLumaConnection({ cfg, timeoutMs: 4000 });
+        if (epoch !== snowlumaConnectionEpoch) return;
+        if (!http.ok || String(http.self?.user_id ?? '') !== String(cfg.snowluma.expectedSelfId)) {
+          snowlumaConnected = false;
+          log('SnowLuma HTTP 接口账号未通过校验，已阻止接收和发送。');
+          return;
+        }
+        const reconnecting = await applyHealedTokens(http);
+        if (reconnecting || epoch !== snowlumaConnectionEpoch) return;
+      }
+      snowlumaConnected = true;
       if (login?.nickname) {
         selfNickname = String(login.nickname).toLowerCase();
         log(`机器人昵称: ${login.nickname}`);
       }
+      void syncTokenToFile();
     }).catch(() => {});
-    // 连接成功后顺手确认一下 token 是否已跟当前账号对齐；不一致就写回 config.json，
-    // 让 MCP 工具（另一个进程）也能拿到正确的 token。
-    void syncTokenToFile();
   });
 
   /**
@@ -13230,7 +13264,9 @@ async function main() {
   }
 
   bot.on('close', (info) => {
+    snowlumaConnectionEpoch++;
     snowlumaConnected = false;
+    snowlumaSelfId = null;
     log(`SnowLuma 连接断开（code=${info?.code ?? '?'}），重连中…`);
     // 连不上时最常见的原因就是换了 QQ 账号 → token 变了；顺手自愈
     void healTokenIfStale(`close code=${info?.code ?? '?'}`);

@@ -47,6 +47,7 @@ if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
 $config = Get-Content -LiteralPath (Join-Path $root 'config.example.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $config.snowluma.accessToken = $http.accessToken
 $config.snowluma | Add-Member -MemberType NoteProperty -Name wsAccessToken -Value $ws.accessToken -Force
+$config.snowluma | Add-Member -MemberType NoteProperty -Name expectedSelfId -Value $BotQQ -Force
 $config.snowluma.homeDir = $SnowLumaDir
 $config.ownerQQ = if ($OwnerQQ) { $OwnerQQ } else { $null }
 $config.allow.groups = @($GroupIds | ForEach-Object { [long]$_ })

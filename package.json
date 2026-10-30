@@ -50,6 +50,7 @@
     "probe:tools": "node scripts/probe-tools.mjs",
     "postinstall": "node scripts/patch-snowluma-sdk.mjs",
     "privacy-scan": "node scripts/privacy-scan.mjs",
+    "test:snowluma-conn": "node scripts/test-snowluma-conn.mjs",
     "harden-acl": "node scripts/harden-state-acl.mjs"
   },
   "dependencies": {

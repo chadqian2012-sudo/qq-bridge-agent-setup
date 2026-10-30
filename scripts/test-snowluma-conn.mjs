@@ -70,6 +70,10 @@ console.log('## per-account token 解析（用临时目录造多账号场景）'
     ok(r.self?.user_id === 222, '回报当前账号', String(r.self?.user_id));
     ok(r.source === 'onebot_222.json', '标明 token 来源', r.source);
     ok(r.tried.length === 2, '记录了尝试过的候选', `${r.tried.length} 个`);
+    const wrongAccount = await discoverSnowLumaConnection({ cfg: { snowluma: { expectedSelfId: '111', accessToken: 'token-bbb' } }, baseUrl: 'http://127.0.0.1:3000', homeDirs: [home], timeoutMs: 500 });
+    ok(!wrongAccount.ok, '已指定账号时拒绝有效但属于其他账号的 token');
+    const expectedAccount = await discoverSnowLumaConnection({ cfg: { snowluma: { expectedSelfId: '222' } }, baseUrl: 'http://127.0.0.1:3000', homeDirs: [home], timeoutMs: 500 });
+    ok(expectedAccount.ok && expectedAccount.self?.user_id === 222 && expectedAccount.tried.length === 1, '只尝试指定账号的配置');
 
     // 全部无效时要给出可操作错误
     globalThis.fetch = async () => ({ ok: false, status: 401, json: async () => ({ status: 'failed', retcode: 1401 }) });

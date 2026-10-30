@@ -26,6 +26,8 @@ Restart DSH after installation. Start QQ and SnowLuma according to their own ins
 
 The scheduler pauses AI Monday–Thursday, allows Friday 16:00–22:00 and weekends or listed holidays 10:00–22:00, using China Standard Time. The included holiday list covers the published 2026 dates only; update it when subsequent years' official dates are available. It does not keep a sleeping computer awake. The watchdog and scheduler are Windows tasks; their names start with `QQDSH-`.
 
+The installer binds the bridge to the selected `-BotQQ`. The bridge checks the logged-in QQ identity on both the OneBot WebSocket and HTTP API and fails closed if either account differs or cannot be verified. Per-account token discovery is restricted to that selected QQ, so it cannot silently switch to another local SnowLuma account.
+
 The included `-NoTasks -SkipDshInstall` options allow an isolated fixture installation, but do not constitute a complete live setup. Testing and status checks do not send QQ messages; scripts explicitly named `send-*` or a console test-send action do send messages and require the user's authorization.
 
 ## Current verification
