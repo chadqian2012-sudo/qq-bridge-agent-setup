@@ -14,7 +14,8 @@ const prefix = persona?.config?.prefix ?? '';
 test('reserved2 YAML resolves to the expected persona and template variables', () => {
   assert.equal(persona?.name, '@deepseek-ai/dsh-persona');
   assert.match(prefix, /\{\{model\}\}/);
-  assert.match(persona.config.suffix, /\{\{cwd\}\}/);
+  assert.equal(persona.config.suffix, 'Use the working directory configured for this session.');
+  assert.doesNotMatch(persona.config.suffix, /\{\{cwd\}\}/);
   assert.equal(Object.hasOwn(persona.config, 'text'), false);
 });
 

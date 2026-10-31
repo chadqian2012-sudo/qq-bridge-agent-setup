@@ -37,7 +37,7 @@ for (const p of ['qq-chat', 'qq-chat-v2']) {
   let schemaOk = false;
   try { persona.Config(row.config); schemaOk = true; } catch {}
   check(`preset ${p}: persona.config 通过 DSH schema`, schemaOk);
-  check(`preset ${p}: 保留 {{model}} / {{cwd}} 变量`, /\{\{model\}\}/.test(row.config.prefix) && /\{\{cwd\}\}/.test(row.config.suffix ?? ''));
+  check(`preset ${p}: 仅使用 DSH 支持的提示变量`, /\{\{model\}\}/.test(row.config.prefix) && row.config.suffix === 'Use the working directory configured for this session.' && !/\{\{cwd\}\}/.test(row.config.suffix ?? ''));
 }
 
 // ── 2. 部署侧：DSH 0.1.7 的 preset 机制 ──────────────────────────────────────
