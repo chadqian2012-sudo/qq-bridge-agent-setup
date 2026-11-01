@@ -165,6 +165,9 @@ try {
     ]);
     assert.deepEqual(JSON.parse(request.postData() || '{}'), { rehardenStateDir: true });
     await page.waitForFunction(() => document.getElementById('stateDirWarn')?.style.display === 'none');
+    const index = fixture.requests.findIndex((entry) => entry.path === '/api/security' && entry.body?.rehardenStateDir === true);
+    assert.notEqual(index, -1);
+    fixture.requests.splice(index, 1);
   });
 
   await test('Second-generation complete save payload, units, zero values and tool switches', async () => {
@@ -191,6 +194,7 @@ try {
     assert.equal(body.wait.defaultQuietMs, 0);
     assert.equal(body.send.maxSendPerMinute, 0);
     assert.equal(body.provideRecommendations, false);
+    if (!original) assert.equal(body.tools.sendVoice, true);
     assert.equal(body.tools[await firstTool.getAttribute('data-v2-tool')], false);
     // The lower save button must submit the same complete configuration.
     await page.waitForFunction(() => document.getElementById('v2AgentPreset').value === 'contract-v2');
@@ -250,13 +254,23 @@ try {
     console.log(`Recorded original API contracts: ${baselinePath}`);
   } else await test('All submitted payloads exactly match the pre-redesign console baseline', async () => {
     const expected = JSON.parse(await readFile(baselinePath, 'utf8'));
-    assert.deepEqual(fixture.requests, expected);
+    // sendVoice was introduced after the historical baseline; validate it
+    // above and compare the original fields against the unchanged baseline.
+    const actual = structuredClone(fixture.requests);
+    for (const request of actual) {
+      if (request.path === '/api/socialV2/config' && request.body?.tools) delete request.body.tools.sendVoice;
+    }
+    assert.deepEqual(actual, expected);
   });
 
   if (!original) await test('Token usage panel renders totals, per-conversation and per-turn cost', async () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await navigate('usage');
     await page.waitForFunction(() => document.getElementById('metricUsageTokens')?.textContent !== '—');
+    const slangUsage = await page.textContent('#usageSlang');
+    assert.match(slangUsage, /提取 2 次/);
+    assert.match(slangUsage, /研究 1 次/);
+    assert.match(slangUsage, /未归属 1 次/);
 
     // 四个总览指标
     assert.match((await page.textContent('#metricUsageCost')).trim(), /^¥\d/, '总花费应渲染成货币金额');

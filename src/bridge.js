@@ -22,6 +22,8 @@ import { mdToPlain, splitForQQ, truncateText, truncateTextTail } from './md-to-p
 import { SENSITIVE_RE } from './sensitive.js';
 import { looksLikeUnfinished } from './v2-wait.js';
 import { compactModelMessage } from './qq-model-view.js';
+import { abortNotice, shouldCountWakeTurn, sleepTimerSegment, appendWakeSnapshot, createStopIntentTracker } from './wake-turn.js';
+import { createSlangUsage } from './slang-usage.js';
 import { safeFetchBuffer, safeFetchRawBuffer, looksLikeImageBuffer, MEDIA_FETCH_OPTIONS, MEDIA_FETCH_OPTIONS_LARGE } from './safe-fetch.js';
 import { AUDIO_EXTS, cleanupTemp, describeAudio, formatBytes, formatDuration, inspectAudio, listAudioFiles, parseTargetKey, processAudioVolume, resolveAudioProcessing, resolveAudioSource, safeJoinLibrary } from './send-voice-lib.js';
 import { discoverSnowLumaConnection, persistSnowLumaEndpoint, persistToken } from './snowluma-conn.js';
@@ -103,6 +105,7 @@ const STICKER_FILE = path.join(STATE_DIR, 'stickers.json');
 const FEEDBACK_FILE = path.join(STATE_DIR, 'feedback.json');
 const TOOL_LOG_FILE = path.join(STATE_DIR, 'tool-calls.jsonl');
 const TOKEN_USAGE_FILE = path.join(STATE_DIR, 'token-usage.jsonl');
+const SLANG_USAGE_FILE = path.join(STATE_DIR, 'slang-usage.json');
 const ACTIVITY_LOG = path.join(STATE_DIR, 'qq-activity.log');
 const BRIDGE_LOG = path.join(STATE_DIR, 'bridge.log');
 // 群活跃日报的发送记账：记录「哪一天的日报已经处理过」（发出或明确跳过），
@@ -1577,6 +1580,11 @@ async function main() {
   const learnerWaiters = new Map();     // sessionId -> [{resolve,reject,timer}]
   let slangLearnerSessionId = null;
   let slangTaskChain = Promise.resolve();
+  const slangUsage = createSlangUsage({
+    read: () => fs.existsSync(SLANG_USAGE_FILE) ? JSON.parse(fs.readFileSync(SLANG_USAGE_FILE, 'utf8')) : null,
+    write: (data) => atomicWriteJson(SLANG_USAGE_FILE, data),
+    log: (...args) => log(...args)
+  });
 
   // ── 表情包体系（二代仿真）本地知识库 ────────────────────────────────────
   // 库文件损坏/读不动时**不能当成空库继续**：下面任何一次 saveStickerStoreSafe 都会把
@@ -2330,7 +2338,8 @@ async function main() {
   }
 
   function waitLearnerTurn(sessionId, timeoutMs = 120000) {
-    return new Promise((resolve, reject) => {
+    let waiter;
+    const promise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         const arr = learnerWaiters.get(sessionId) ?? [];
         const idx = arr.findIndex((w) => w.timer === timer);
@@ -2338,11 +2347,24 @@ async function main() {
         if (arr.length === 0) learnerWaiters.delete(sessionId);
         reject(new Error(`等待学习会话 turn 超时(${timeoutMs}ms)`));
       }, timeoutMs);
-      const waiter = { resolve, reject, timer };
+      waiter = { resolve, reject, timer };
       const arr = learnerWaiters.get(sessionId) ?? [];
       arr.push(waiter);
       learnerWaiters.set(sessionId, arr);
     });
+    // A fast DSH turn may complete before session.prompt returns. Register the
+    // waiter first, and remove it if prompt admission fails.
+    promise.catch(() => {});
+    promise.cancel = () => {
+      const arr = learnerWaiters.get(sessionId) ?? [];
+      const idx = arr.indexOf(waiter);
+      if (idx < 0) return;
+      arr.splice(idx, 1);
+      if (arr.length === 0) learnerWaiters.delete(sessionId);
+      clearTimeout(waiter.timer);
+      waiter.resolve(null);
+    };
+    return promise;
   }
 
   async function runSlangExtraction(key) {
@@ -2361,13 +2383,21 @@ async function main() {
     }
 
     const promptText = buildExtractionPrompt(messages);
+    const learnerWait = waitLearnerTurn(sessionId);
+    let usageCounted = false;
+    let usageFinished = false;
     try {
       const accepted = await api.sessions.prompt({ sessionId, mode: 'queue', content: [{ type: 'text', text: promptText }] });
       if (!accepted.result.ok) {
         log(`黑话提取被拒 (${key}): ${accepted.result.error.code}: ${accepted.result.error.message}`);
         return;
       }
-      const output = await waitLearnerTurn(sessionId);
+      slangUsage.accepted('extraction');
+      usageCounted = true;
+      const learned = await learnerWait;
+      slangUsage.completed('extraction', tokenLedger.usageForTurn(sessionId, learned.turn));
+      usageFinished = true;
+      const output = learned.text;
       const items = parseExtractionJson(output);
       if (!items.length) {
         log(`黑话提取：${key} 未发现候选`);
@@ -2400,10 +2430,13 @@ async function main() {
         queueSlangTask(() => runSlangResearch(researchCandidates));
       }
     } catch (error) {
+      if (usageCounted && !usageFinished) slangUsage.completed('extraction', null);
       if (/会话|session|not found|404/i.test(String(error?.message ?? error))) {
         invalidateSlangLearnerSession();
       }
       log(`黑话提取失败 (${key}):`, error?.message ?? error);
+    } finally {
+      learnerWait.cancel();
     }
   }
 
@@ -2424,13 +2457,21 @@ async function main() {
       return;
     }
     const promptText = buildResearchPrompt(targets);
+    const learnerWait = waitLearnerTurn(sessionId);
+    let usageCounted = false;
+    let usageFinished = false;
     try {
       const accepted = await api.sessions.prompt({ sessionId, mode: 'queue', content: [{ type: 'text', text: promptText }] });
       if (!accepted.result.ok) {
         log(`黑话研究被拒: ${accepted.result.error.code}: ${accepted.result.error.message}`);
         return;
       }
-      const output = await waitLearnerTurn(sessionId);
+      slangUsage.accepted('research');
+      usageCounted = true;
+      const learned = await learnerWait;
+      slangUsage.completed('research', tokenLedger.usageForTurn(sessionId, learned.turn));
+      usageFinished = true;
+      const output = learned.text;
       const results = parseResearchJson(output);
       for (const r of results) {
         const entry = slangEntries.find((e) => e.content === r.content);
@@ -2452,11 +2493,13 @@ async function main() {
       saveSlangStore();
       log(`黑话研究：已更新 ${results.length} 条候选解释`);
     } catch (error) {
+      if (usageCounted && !usageFinished) slangUsage.completed('research', null);
       if (/会话|session|not found|404/i.test(String(error?.message ?? error))) {
         invalidateSlangLearnerSession();
       }
       log('黑话研究失败:', error?.message ?? error);
     } finally {
+      learnerWait.cancel();
       for (const e of targets) slangResearchingIds.delete(e.id);
     }
   }
@@ -2609,6 +2652,8 @@ async function main() {
   const collectors = new Map(); // sessionId -> turn collector
   const sendToolSucceededSessions = new Set(); // sessionId：当前 turn 内 MCP 发送类工具至少成功一次
   const v2TurnStartAt = new Map(); // sessionId -> timestamp：reserved2 turn 开始时间，用于判断是否“无行动”
+  const v2TurnIds = new Map();
+  const stopIntents = createStopIntentTracker();
   // key -> 连续"被直接叫到却没回话"的补提醒次数。发出一条消息后清零。
   // 用途：给「被 @ 了必须回」加一层**服务端保证** —— 光靠提示词是概率性的，模型仍可能看完就潜水。
   // 上限 1：补一次还不回就放弃，避免和模型来回拉扯刷屏。
@@ -2984,6 +3029,8 @@ async function main() {
     sendToolSucceededSessions.delete(sessionId);
     pendingSendToolCalls.delete(sessionId);
     v2TurnStartAt.delete(sessionId);
+    v2TurnIds.delete(sessionId);
+    stopIntents.clearSession(sessionId);
     toolCallNames.delete(sessionId);
     social.silentTurns.delete(sessionId);
     social.exitingSessions.delete(sessionId);
@@ -6463,7 +6510,7 @@ async function main() {
           if (req.headers['x-agent-token']) { sendJson({ ok: false, error: '该接口仅控制台可用' }, 403); return; }
           if (req.method === 'GET' && url.pathname === '/api/tokens/summary') {
             const limit = Math.min(500, Math.max(1, Number(url.searchParams.get('limit')) || 200));
-            sendJson({ ...tokenLedger.summary({ limit }), ledger: tokenLedger.stats() });
+            sendJson({ ...tokenLedger.summary({ limit }), ledger: tokenLedger.stats(), slangUsage: slangUsage.summary() });
             return;
           }
           if (req.method === 'GET' && url.pathname === '/api/tokens/series') {
@@ -6487,6 +6534,7 @@ async function main() {
           }
           if (req.method === 'POST' && url.pathname === '/api/tokens/reset') {
             tokenLedger.reset();
+            slangUsage.reset();
             log('控制台：token 用量账本已重置');
             sendJson({ ok: true });
             return;
@@ -7356,6 +7404,8 @@ async function main() {
           sendToolSucceededSessions.clear();
           pendingSendToolCalls.clear();
           v2TurnStartAt.clear();
+          v2TurnIds.clear();
+          stopIntents.clear();
           toolCallNames.clear();
           saveState();
           try { fs.writeFileSync(ACTIVITY_LOG, ''); } catch {}
@@ -9111,11 +9161,14 @@ async function main() {
     if (limit <= 0) return false;
     const sessionId = state.sessions[key];
     if (!sessionId) return false;
-    let ctx = 0;
+    let ctx = null;
     try {
-      const hit = (tokenLedger.recent(200) ?? []).find((e) => e && e.sessionId === sessionId);
-      ctx = Number(hit?.cacheHit) || 0;
+      ctx = tokenLedger.latestSessionInput(sessionId);
     } catch { return false; }
+    if (ctx === null) {
+      log(`[reserved2] ${key} 缺少最近请求的输入用量，暂不轮换会话`);
+      return false;
+    }
     if (ctx <= limit) return false;
     const st = socialV2.conversations.get(canonicalV2Key(key));
     if (st && isConversationBusyV2(key, st)) return false;   // 回合还在跑就别动它
@@ -9824,9 +9877,7 @@ async function main() {
       wakeToken = wakeState.agentToken;
       promptText = buildWakePromptV2(key, opts.wakeReason);
       wakeSnapshot = buildWakeSnapshotV2(key);
-      if (wakeSnapshot) {
-        promptText += `\n\n【本次消息快照】\n${JSON.stringify(wakeSnapshot)}\n以上消息已提供，无需重复查询；partial=true 时用 qq_get_unread_messages(afterSeq=readThroughSeq) 继续读取。先处理当前消息；回复前如需确认后续补充，用 qq_wait_for_messages(purpose="reply") 补足短静默，已安静够久会立即返回，不要先长等。收尾只确认你已处理的 readThroughSeq（本地 seq，非 QQ messageId），传给 qq_mark_read 或 qq_set_wake_config 的 throughSeq；新到消息留待处理。`;
-      }
+      promptText = appendWakeSnapshot(promptText, wakeSnapshot);
     }
     let content = [{ type: 'text', text: withSlangContext(promptText, key) }];
     if (Array.isArray(opts.media) && opts.media.length > 0) {
@@ -11082,7 +11133,7 @@ async function main() {
     // 避免唤醒 prompt 出现两份黑话表。
     const participationText = formatParticipationV2(st);
     const participationLine = participationText ? `${participationText}\n\n` : '';
-    const antiAiLine = '【反AI味】你不是客服：不用有求必应，可以装傻、已读乱回、拒绝推荐；少用“一绝/真管用/保证/绝对”这类词。\n'
+    const antiAiLine = '【表达方式】自然、礼貌地回应；不确定时如实说明，避免夸大承诺。\n'
       + '【说话分寸·最高优先】**不要说会得罪人的话**。发之前自检一句：这话会不会让谁下不来台？不评价对方的外貌、身材、家境、学历、智商、水平、喜好、家乡、职业、家人；不拿别人的失败、病痛、感情、口音当笑点；不阴阳怪气地贬低，不追着人怼。“我开玩笑的”不是免罪符——对方没笑就不算玩笑。拿不准就把话说软一点，或者干脆别说。别用尖锐刻薄的话怼群友：不人身攻击。被冒犯时最多冷淡、敷衍、装没看见或用表情包带过，不要用攻击性语言回敬。对方认真求助、或在说正经事/难过的事时，好好说话；只有纯玩梗的场合才放松一点。宁可少说一句，也别为了“像真人”去呛人。\n【接梗】别只回「哈哈哈」「确实」「笑死」——那等于没接。接梗三条路：顺着夸大、反着拆台、换个场景套用；幽默靠抓住对方话里最具体的词再拐个弯，不靠堆热词。群里在用的梗（见【本群最近在用的梗】）可以接，但别硬塞、别解释梗、别连用三个。被调侃时能自嘲或顺着演就别端着；对方认真说话时立刻收。幽默的界线是「对方也会笑」，不是把别人说下去。\n【消息长度】群聊一条目标 15 字以内、最多两行；超过 40 字的解释/科普基本没人看，还会把梗讲死。要展开先问「想听长的还是短的」。偶尔带一个反问（你呢/真的假的）比单纯陈述更像聊天，但别每句都问。\n\n';
     const stickerCfg = cfg.socialV2?.sticker ?? {};
     const stickerLine = stickerCfg.enabled !== false && stickerCfg.includeInPrompt !== false
@@ -11103,7 +11154,7 @@ async function main() {
     ? `【语音·已开启】语音库现成 ${voiceNames.length} 条：${voiceNames.join('、')}（直接用 qq_send_voice 传 voice=上面某个名字即可，不用先查；发完 verified=true 才算真发出去）。音色是自然的神经网络音色。\n【什么时候该用·场景对号入座】别人打招呼/早安 → '早啊'、'来啦'；道晚安 → '晚安'、'我先睡了'；夸你/给了好东西 → '好耶'、'太强了'、'牛'；吐槽你/离谱场面 → '离谱'、'难绷'、'服了'、'好家伙'；心情 → '困了'、'饿了'、'在摸鱼'；要走 → '我先撤了'；安慰人 → '没事'、'别急'。**判断标准：你要发的是"纯情绪的一句话"（≤15 字、没有新信息）→ 优先用语音，比打字更像人**；只是"聊天里的一条普通回复"→ 打字。\n【硬约束】**重要信息 / 正经事 / 需要对方记住或核对的内容一律打字**；别连着发、别当主力、也别用它替代正常回话；严肃或敏感话题里不要用；同一个群一小时内最多 3 条，也别每轮都发。库里没有合适的**别急着放弃**：给 qq_send_voice 传 text=（一句不超过 40 字的话），本机会用离线神经 TTS 按你的音色现场合成再说出来。但别硬发，也不要假装发了语音。\n\n`
       : '';
     const preSleepMs = Math.max(0, Number(cfg.socialV2?.wake?.preSleepWaitMs) || 300000);
-    const proactiveLine = '【积极性】不要习惯性潜水：群里有你能接的话题就主动参与，偶尔插一句别人的话题也很正常；只有确实没话可说、对方已明确结束、或长时间没人说话时才潜水。\n\n';
+    const proactiveLine = '【参与分寸】被直接询问时认真回应；普通闲聊按当前唤醒策略判断，没有合适内容时安静潜水。\n\n';
     const replyTiming = replyTimingV2(st);
     const replyLine = `【首回复节奏】先处理已有消息，完整的问题及时回答。需要确认对方是否继续补充时，用 qq_wait_for_messages(purpose="reply", quietMs=${replyTiming.quietMs})；从最后来信计时，合批和读提示词的耗时也算，目前还差约 ${Math.ceil(replyTiming.remainingQuietMs / 1000)} 秒静默。已安静够久可直接回，工具也会立即返回并补上思考期间的新消息。**首答前最多等这一次**：重复调用会被直接放行并提醒你回复——别把"再看一眼"当习惯动作。被 @ / 点名 / 私聊时，先回一句再考虑等补充，别让人以为你不在。只有明确没说完、你确实要等下文时，才用普通 messages 长等待。\n\n`;
     const preSleepLine = `【沉睡前强制等待】这是决定潜水收尾时的步骤，不是首回复的前置条件。除非对方明确说“不聊了/晚安/下了/拜拜”等结束语，否则每次设置潜水/下一次唤醒前，必须先调用 qq_wait_for_messages(timeoutMs=${preSleepMs}) 完成一次沉睡前观察；回复前 purpose="reply" 的短静默不能代替这次完整观察。若 ${Math.round(preSleepMs / 60000)} 分钟内没人说话，返回 preSleepWaitSatisfied=true，可以设置下一次唤醒并沉睡；若期间有人发新消息，先查看返回的 newMessages——判断不需要你参与就可以直接沉睡，若你选择参与回复，则下次想睡时需要重新等待观察窗口。如果返回里带 preSleepWaitRemainingMs，就按剩余时间继续等待。\n\n`;
@@ -11176,7 +11227,7 @@ async function main() {
     if (isDirectedWakeReason(reason)) {
       return `${baseDirected}【唤醒】${key}\n原因：有人在直接跟你说话 —— ${describeWakeReason(reason)}。\n`
         + '【这次必须回】这一轮**至少要发出一条消息**（qq_send_message / qq_reply / qq_send_sticker 任意一种都算），不能看完就 mark_read 走人。\n'
-        + '内容随意：可以只回一句短的、可以装傻、可以敷衍、可以用表情包顶上，甚至只回个"？"都行 —— 但**不许沉默**。\n'
+        + '根据对方的意思礼貌、自然地回应；简单问题可以简短回答。\n'
         + '先看未读消息弄清对方在说什么再开口；对方在正经说话就好好答，纯玩梗就放松点。\n'
         + '注意：【不要没话硬接】只适用于"没人叫你、你自己瞄到普通闲聊"的情况，**不适用于现在**。\n'
         + '回完之后再按上面的【沉睡前强制等待】收尾。';
@@ -11192,7 +11243,7 @@ async function main() {
     return `${tokenLine}【你漏了一次】刚才有人在直接跟你说话 —— ${describeWakeReason(reason)} —— `
       + '但你这一轮**一条消息都没发**，看完就直接收尾了。\n'
       + '现在补上：**请发一条消息回应**（qq_send_message / qq_reply / qq_send_sticker 都算）。\n'
-      + '可以很短、可以装傻、可以敷衍、可以只用表情包顶一下，但不能继续不理人。'
+      + '可以简短，但要认真理解对方并礼貌回应。'
       + '先看未读消息确认对方说的是什么再开口。\n'
       + `发完再按常规收尾（先 qq_wait_for_messages(timeoutMs=${preSleepMs}) 完成沉睡前观察，再用 qq_mark_read 或 qq_set_wake_config）。`;
   }
@@ -11383,7 +11434,12 @@ async function main() {
     if (Date.now() - turnStart < 8000) return false;                 // 刚开轮，别抢跑
     if (Number(st.lastAiReplyAt || 0) < turnStart) return false;     // 本轮没发过话 → 可能正在写回复，不能打断
     log(`[reserved2] ${key} 收到定向呼叫（${reason}）且本轮已发过言：结束观察期，立即处理`);
-    api.stopSessionWork(sid).catch((error) => log(`⚠️ 中断当前回合失败 ${key}：${error?.message ?? error}`));
+    const turn = v2TurnIds.get(sid);
+    stopIntents.mark(sid, turn, 'directed-wake');
+    api.stopSessionWork(sid).catch((error) => {
+      stopIntents.take(sid, turn);
+      log(`⚠️ 中断当前回合失败 ${key}：${error?.message ?? error}`);
+    });
     return true;
   }
 
@@ -11592,7 +11648,7 @@ async function main() {
       return;
     }
     // Node setTimeout 超过 2^31-1ms 会按 1ms 触发；远未来定时器先等满上限后重新续期，而不是提前唤醒。
-    const MAX_TIMEOUT_MS = 100009;
+    const MAX_TIMEOUT_MS = sleepTimerSegment(Infinity);
     if (delay > MAX_TIMEOUT_MS) {
       st.sleepTimer = setTimeout(() => {
         st.sleepTimer = null;
@@ -12572,6 +12628,8 @@ async function main() {
     if (sid) {
       collectors.delete(sid);
       v2TurnStartAt.delete(sid);
+      v2TurnIds.delete(sid);
+      stopIntents.clearSession(sid);
       // 取消失败不算致命：标记已经清掉、唤醒照发，只是那条旧回合可能还在跑。
       // 自检（人造繁忙）时必然报 invalid session/control baseline，因为本来就没有真实回合可取消。
       api.stopSessionWork(sid).catch((error) => log(`[busy] ${key} 取消旧回合未成功（不影响解除堵塞，会继续处理消息）：${error?.message ?? error}`));
@@ -12673,7 +12731,7 @@ async function main() {
                   if (waiter) {
                     clearTimeout(waiter.timer);
                     if (learnerEnded.reason.kind === 'completed' && learnerEnded.text.trim()) {
-                      waiter.resolve(learnerEnded.text);
+                      waiter.resolve({ text: learnerEnded.text, turn: learnerEnded.turn });
                     } else {
                       waiter.reject(new Error(`学习会话 turn 未正常完成：${learnerEnded.reason.kind}`));
                     }
@@ -12691,6 +12749,7 @@ async function main() {
               sendToolSucceededSessions.delete(frame.sessionId);
               pendingSendToolCalls.delete(frame.sessionId);
               v2TurnStartAt.set(frame.sessionId, Date.now());
+              v2TurnIds.set(frame.sessionId, frame.event.data?.turn);
             }
             if (frame.event.type === 'tool/call') {
               const toolName = String(frame.event.data?.name ?? '');
@@ -12745,6 +12804,7 @@ async function main() {
             collectors.set(frame.sessionId, collector);
             const ended = collector.push(frame.event);
             if (ended) {
+              const stopIntent = stopIntents.take(frame.sessionId, ended.turn);
               // 回合正常收尾 → 清空连续失败计数；失败则交给熔断逻辑累加。
               if (ended.reason.kind === 'completed') {
                 noteTurnSuccessV2(key);
@@ -12755,7 +12815,7 @@ async function main() {
               // 则累计 noActionCount；达到阈值后自动重置 WakeConfig，避免 AI 卡死。
               const silentQueueNow = social.silentTurns.get(frame.sessionId) ?? [];
               const isSilentTurn = silentQueueNow.length > 0;
-              if (currentMode === 'reserved2' && key && !isSilentTurn) {
+              if (currentMode === 'reserved2' && key && shouldCountWakeTurn(ended.reason, isSilentTurn)) {
                 const st = getSocialV2State(key);
                 const turnStart = v2TurnStartAt.get(frame.sessionId) ?? 0;
                 const actionTaken = sendToolSucceededSessions.has(frame.sessionId) || (turnStart > 0 && st.lastActionAt >= turnStart);
@@ -12789,6 +12849,7 @@ async function main() {
                 saveSocialV2State();
               }
               v2TurnStartAt.delete(frame.sessionId);
+              v2TurnIds.delete(frame.sessionId);
               collectors.delete(frame.sessionId);
               const sendToolSucceeded = sendToolSucceededSessions.has(frame.sessionId);
               sendToolSucceededSessions.delete(frame.sessionId);
@@ -12814,7 +12875,12 @@ async function main() {
               if (pendingWakeKeys.has(key)) {
                 pendingWakeKeys.delete(key);
                 disarmPendingWakeLease(key);
-                if (wakeConfigUpdatedKeys.has(key) || markReadCalledKeys.has(key)) {
+                if (ended.reason.kind !== 'completed') {
+                  wakeConfigUpdatedKeys.delete(key);
+                  markReadCalledKeys.delete(key);
+                  wakeConfigMissCount.delete(key);
+                  log(`[reserved2] ${key} 回合中断或失败，清理唤醒租约并保留待处理消息`);
+                } else if (wakeConfigUpdatedKeys.has(key) || markReadCalledKeys.has(key)) {
                   ensureWakeableV2(getSocialV2State(key), { key });
                   wakeConfigUpdatedKeys.delete(key);
                   markReadCalledKeys.delete(key);
@@ -13011,7 +13077,12 @@ async function main() {
                   }
                 }
               } else if (ended.reason.kind === 'aborted') {
-                await sendToQQ(key, '⏹️ 已停止');
+                // The bridge has no explicit user-stop signal for this event.
+                // External DSH stops and internal interruptions are ambiguous.
+                const notice = abortNotice(stopIntent);
+                if (notice) await sendToQQ(key, notice);
+                log(`agent 回合中断 (${key})，来源=${stopIntent ?? 'unknown'}`);
+                appendActivity(`${key} agent 回合中断（${stopIntent ?? 'unknown'}）`);
                 if (isFarewell) {
                   const st = socialState(key);
                   if (st.phase === 'exiting') {
@@ -13111,6 +13182,8 @@ async function main() {
         sendToolSucceededSessions.clear();
         pendingSendToolCalls.clear();
         v2TurnStartAt.clear();
+        v2TurnIds.clear();
+        stopIntents.clear();
         toolCallNames.clear();
         pendingWakeKeys.clear();
         clearAllPendingWakeLeases();

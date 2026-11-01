@@ -2519,6 +2519,7 @@ button:active:not(:disabled) {
         <div class="metric"><span>缓存命中率</span><strong id="metricUsageHitRate">—</strong><small id="metricUsageHitHint">命中输入 ÷ 总输入</small></div>
         <div class="metric"><span>平均每轮</span><strong id="metricUsagePerTurn">—</strong><small id="metricUsagePerTurnHint">按已归属回合</small></div>
       </div>
+      <div class="meta" id="usageSlang">黑话学习用量：读取中…</div>
       <div class="row usage-controls">
         <button id="usageRefresh" class="small">刷新</button>
         <button id="usageClear" class="small danger">清空账本</button>
@@ -4767,6 +4768,14 @@ async function refreshUsage() {
   const msg = document.getElementById('usageMsg');
   try {
     const r = await api('/api/tokens/summary?limit=200');
+    const slang = r.slangUsage;
+    const usageSlang = document.getElementById('usageSlang');
+    if (usageSlang) {
+      const label = (name, row) => `${name} ${usageNum(row.calls)} 次，已记录输入 ${usageNum(row.input)} / 输出 ${usageNum(row.output)} tokens，未归属 ${usageNum(row.unknown + row.pending)} 次`;
+      usageSlang.textContent = slang?.available
+        ? `黑话学习（自启用统计以来）：${label('提取', slang.extraction)}；${label('研究', slang.research)}。已包含在总量中。`
+        : '黑话学习用量暂不可用。';
+    }
     const t = r.totals || {};
     const b = t.buckets || {};
     const sym = r.symbol || '¥';

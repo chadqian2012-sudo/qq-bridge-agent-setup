@@ -24,6 +24,8 @@ import * as groupAdmin from '../src/group-admin.js';
 import * as autoMod from '../src/auto-mod.js';
 import * as muteStats from '../src/mute-stats.js';
 import * as wakeReasons from '../src/wake-reasons.js';
+import * as wakeTurn from '../src/wake-turn.js';
+import * as slangUsage from '../src/slang-usage.js';
 import * as serviceWindow from '../src/service-window.js';
 import { unwrap, createTurnCollector } from '../src/dsh-client.js';
 
@@ -112,8 +114,8 @@ export async function bridgeHarness({ config = {}, savedState, globals = {} } = 
     ensureSession, ensureSlangLearnerSession, resolvePresetName, deliverPrompt, drainPromptQueue,
     sendToQQ, sendStickerV2, handleIncoming, startConsoleServer, cfg, state, api, promptQueues,
     getSocialV2State, appendSocialV2Message, recordSentMessagesV2,
-    buildWakePromptV2, buildWakeSnapshotV2, sendWakePromptV2, socialV2,
-    flushQueue, retireSession,
+    buildWakePromptV2, buildWakeSnapshotV2, sendWakePromptV2, socialV2, pumpMux, stopIntents,
+    flushQueue, retireSession, slangWindows, runSlangExtraction, runSlangResearch, slangUsage,
     voiceCfg, voiceLibrary, resolveVoicePathForV2, resolveVoicePathForOperator,
     voiceBudgetCheck, sendVoiceV2, sendVoiceForV2, assertOutboundAuditOk,
     setMode(value) { currentMode = value; },
@@ -138,7 +140,7 @@ export async function bridgeHarness({ config = {}, savedState, globals = {} } = 
     SnowLumaWebSocketClient: FakeBot, text: (s) => s,
     discoverDshLaunchToken: () => '', unwrap, createTurnCollector,
     ...markdown, ...sensitive, ...wait, ...safeFetch, ...forward, ...slang, ...sticker,
-    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...groupStats, ...groupAdmin, ...autoMod, ...muteStats, ...wakeReasons,
+    ...modelPrices, ...tokenLedger, ...voiceLib, ...stateAcl, ...groupStats, ...groupAdmin, ...autoMod, ...muteStats, ...wakeReasons, ...wakeTurn, ...slangUsage,
     // 群聊服务时限（allow.groupUntil）：bridge.js 的 allowed() 会调用它，VM 里必须注入。
     ...serviceWindow,
     // ACL 收紧会 spawn icacls 去改**真实**文件系统；测试不该做这件事（同理见下面的

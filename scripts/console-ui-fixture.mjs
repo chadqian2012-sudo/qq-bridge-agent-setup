@@ -81,6 +81,7 @@ function usageSummaryFixture() {
   const steps = conversations.reduce((acc, c) => acc + c.steps, 0);
   return {
     ok: true,
+    slangUsage: { available: true, extraction: { calls: 2, measured: 1, unknown: 1, pending: 0, input: 120, output: 8 }, research: { calls: 1, measured: 1, unknown: 0, pending: 0, input: 90, output: 5 } },
     generatedAt: Date.parse(timestamp),
     priceVersion: USAGE_PRICE_TABLE.version,
     currency: 'CNY',

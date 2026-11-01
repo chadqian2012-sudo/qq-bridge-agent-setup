@@ -873,6 +873,33 @@ export function createTokenLedger({
     return out;
   }
 
+  // Latest individual request for this session, not a sum across requests.
+  // DSH usage buckets are disjoint: uncached input + cache read + cache write.
+  function latestSessionInput(sessionId) {
+    let latest = null;
+    for (const sample of samples.values()) {
+      if (sample.sessionId !== sessionId) continue;
+      if (!latest || sample.seq > latest.seq || (sample.seq === latest.seq && sample.t > latest.t)) latest = sample;
+    }
+    if (!latest) return null;
+    const b = latest.buckets;
+    const total = (Number(b.cacheMiss) || 0) + (Number(b.cacheHit) || 0) + (Number(b.cacheWrite) || 0);
+    return total > 0 ? total : null;
+  }
+
+  function usageForTurn(sessionId, turn) {
+    let found = false;
+    let input = 0;
+    let output = 0;
+    for (const sample of samples.values()) {
+      if (sample.sessionId !== sessionId || sample.turn !== turn) continue;
+      found = true;
+      input += sample.buckets.cacheMiss + sample.buckets.cacheHit + sample.buckets.cacheWrite;
+      output += sample.buckets.output;
+    }
+    return found ? { input, output } : null;
+  }
+
   function stats() {
     return {
       file,
@@ -923,6 +950,8 @@ export function createTokenLedger({
     conversation,
     series,
     recent,
+    latestSessionInput,
+    usageForTurn,
     stats,
     reset,
     compact,

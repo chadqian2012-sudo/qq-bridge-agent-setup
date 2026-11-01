@@ -105,6 +105,8 @@ let ledger = freshLedger({ resolveKey: (sid) => (sid === 's1' ? 'group:100' : un
 // 流式采样 → 最终结算应覆盖，而不是累加
 ledger.ingestEvent({ sessionId: 's1', event: { seq: 10, time: at, type: 'assistant/attempt', data: { turn: 1, step: 1, stream: [{ usage: usage(1000, 50, 0) }] } } });
 ledger.ingestEvent({ sessionId: 's1', event: evMsg(11, 1, 1, usage(1200, 80, 4000)) });
+assert(ledger.latestSessionInput('s1') === 5200, 'latest request input includes cached and uncached tokens');
+assert(ledger.latestSessionInput('unknown') === null, 'missing session input is unknown');
 let conv = ledger.conversation('group:100');
 assert(conv.turns.length === 1, '同一 (turn, step) 只有一行逐轮明细（流式被结算覆盖）');
 assert(conv.turns[0].buckets.cacheMiss === 1200 && conv.turns[0].buckets.output === 80,
@@ -113,6 +115,9 @@ assert(conv.turns[0].steps === 1, 'steps 计为该回合的采样条数（1）')
 
 // 同回合第二个 step 累加
 ledger.ingestEvent({ sessionId: 's1', event: evMsg(12, 1, 2, usage(300, 20, 100)) });
+assert(ledger.latestSessionInput('s1') === 400, 'latest request input is not the sum across steps');
+assert(ledger.usageForTurn('s1', 1)?.input === 5600 && ledger.usageForTurn('s1', 1)?.output === 100, 'turn usage sums distinct request steps');
+assert(ledger.usageForTurn('s1', 99) === null, 'unobserved turn usage remains unknown');
 conv = ledger.conversation('group:100');
 assert(conv.turns[0].steps === 2, '同回合第 2 个 step 计入同一行');
 assert(conv.turns[0].buckets.cacheMiss === 1500 && conv.turns[0].buckets.output === 100, '同回合跨 step 累加');

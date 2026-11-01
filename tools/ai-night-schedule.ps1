@@ -29,16 +29,6 @@ function Write-Log([string]$message) {
   Add-Content -LiteralPath $logFile -Value $line -Encoding UTF8
 }
 
-if (-not (Test-Path -LiteralPath $tokenFile)) {
-  Write-Log 'skip: console-token not found (bridge has never started)'
-  exit 0
-}
-$token = (Get-Content -LiteralPath $tokenFile -Raw).Trim()
-if (-not $token) {
-  Write-Log 'skip: console-token is empty'
-  exit 0
-}
-
 $now = if ($env:AI_SCHED_NOW) { Get-Date $env:AI_SCHED_NOW } else {
   $zone = [TimeZoneInfo]::FindSystemTimeZoneById('China Standard Time')
   [TimeZoneInfo]::ConvertTimeFromUtc([DateTime]::UtcNow, $zone)
@@ -61,6 +51,16 @@ if ($isHoliday -or $isWeekend) {
 
 if ($env:AI_SCHED_DRY) {
   Write-Output ('dry-run: now={0:yyyy-MM-dd HH:mm} holiday={1} weekend={2} friday={3} window={4} desiredPaused={5}' -f $now, $isHoliday, $isWeekend, $isFriday, $windowLabel, $desired)
+  exit 0
+}
+
+if (-not (Test-Path -LiteralPath $tokenFile)) {
+  Write-Log 'skip: console-token not found (bridge has never started)'
+  exit 0
+}
+$token = (Get-Content -LiteralPath $tokenFile -Raw).Trim()
+if (-not $token) {
+  Write-Log 'skip: console-token is empty'
   exit 0
 }
 
