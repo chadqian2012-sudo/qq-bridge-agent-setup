@@ -141,6 +141,10 @@ export function renderPatch(name) {
   return `${header}${yaml.dump([{ insert: [row] }], { lineWidth: -1, noRefs: true })}`;
 }
 
+export function samePatchContent(current, generated) {
+  return current !== null && current.replace(/\r\n/g, '\n') === generated.replace(/\r\n/g, '\n');
+}
+
 /** 生成（或校验）全部 patch 文件。@returns {{file:string,changed:boolean}[]} */
 export function buildPatches({ check = false, log = () => {} } = {}) {
   const results = [];
@@ -148,7 +152,9 @@ export function buildPatches({ check = false, log = () => {} } = {}) {
     const file = patchFileFor(name);
     const content = renderPatch(name);
     const current = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
-    const changed = current !== content;
+    // Git may check out CRLF on Windows. Compare logical YAML content while
+    // still detecting all non-line-ending drift.
+    const changed = !samePatchContent(current, content);
     if (changed && !check) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, content, 'utf8');
